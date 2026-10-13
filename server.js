@@ -8,6 +8,8 @@ const express = require('express');
 const QRCode = require('qrcode');
 const { Server } = require('socket.io');
 const { Room, GameError } = require('./src/room');
+const { ProfileStore, UserError } = require('./src/profiles');
+const game = require('./src/game');
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O — easy to read aloud
 const CODE_LENGTH = 4;
@@ -64,11 +66,14 @@ function createGameServer({
   sweepIntervalMs = SWEEP_INTERVAL_MS,
   eventRate = 15, // socket events per second, per connection
   eventBurst = 40,
+  profileSecret = crypto.randomBytes(32).toString('hex'), // pass a stable one in production
+  profilesFile = null, // JSON file for profiles, or null to keep them in memory
 } = {}) {
   const app = express();
   const server = http.createServer(app);
   const io = new Server(server, { maxHttpBufferSize: 10_000 });
   const rooms = new Map();
+  const profiles = new ProfileStore({ secret: profileSecret, file: profilesFile });
   let gamesPlayed = 0;
 
   app.disable('x-powered-by');
@@ -111,6 +116,9 @@ function createGameServer({
   }
 
   app.get('/api/lobby', (req, res) => res.set('Cache-Control', 'no-store').json(lobbySnapshot()));
+  app.get('/api/leaderboard', (req, res) =>
+    res.set('Cache-Control', 'no-store').json(profiles.leaderboard(String(req.query.metric || 'xp'), null, 20))
+  );
 
   // Scan-to-join QR code for a room.
   app.get('/qr/:code.svg', async (req, res) => {
@@ -164,10 +172,36 @@ function createGameServer({
       },
       onFinish() {
         gamesPlayed++;
+        rewardPlayers(room);
       },
     });
     rooms.set(room.code, room);
     return room;
+  }
+
+  /** Turns a finished game into XP, credits and goal progress for every human who played it. */
+  function rewardPlayers(room) {
+    const scores = game.scores(room.board);
+    const humans = room.roster.filter((p) => !p.isBot).length;
+    const vsHard = room.roster.some((p) => p.isBot && p.botLevel === 'hard');
+    for (const player of room.roster) {
+      const member = room.getMember(player.id);
+      if (player.isBot || !member?.profileId || !room.turnOrder.includes(player.id)) continue;
+      const stats = room.stats[player.id];
+      const rewards = profiles.recordGame(member.profileId, {
+        won: room.winnerIds.includes(player.id),
+        boxes: scores[player.id] || 0,
+        bestCombo: stats.bestCombo,
+        combos: stats.combos,
+        powers: stats.powers,
+        stars: stats.stars,
+        humans,
+        vsHard,
+      });
+      if (rewards && member.socketId) {
+        io.to(member.socketId).emit('profile:update', { ...profiles.snapshot(member.profileId), rewards });
+      }
+    }
   }
 
   function deleteRoom(room) {
@@ -189,8 +223,9 @@ function createGameServer({
           const data = payload && typeof payload === 'object' ? payload : {};
           reply({ ok: true, ...handler(data) });
         } catch (err) {
-          if (!(err instanceof GameError)) console.error(`[${event}]`, err);
-          reply({ ok: false, error: err instanceof GameError ? err.message : 'Something went wrong.' });
+          const safe = err instanceof GameError || err instanceof UserError;
+          if (!safe) console.error(`[${event}]`, err);
+          reply({ ok: false, error: safe ? err.message : 'Something went wrong.' });
         }
       });
 
@@ -233,7 +268,15 @@ function createGameServer({
       // never silently drop the player into someone else's game.
       if (token && isNew) throw new GameError('Your previous game has ended. Join again with the room code.');
       if (socket.data.roomCode) leaveCurrentRoom();
-      const member = room.join(name, token, avatar);
+      const profileId = socket.data.profileId;
+      // Premium avatars only for players who unlocked them.
+      const allowedAvatar = profiles.ownsAvatar(profileId, avatar) ? avatar : undefined;
+      const member = room.join(name, token, allowedAvatar);
+      if (isNew && profileId) {
+        member.profileId = profileId;
+        member.frame = profiles.get(profileId)?.frame || 'none';
+        profiles.setIdentity(profileId, { name, avatar: allowedAvatar });
+      }
 
       // Same player opened the game in another tab: the newest tab wins.
       const old = member.socketId && io.sockets.sockets.get(member.socketId);
@@ -307,6 +350,48 @@ function createGameServer({
       return {};
     });
 
+    // ---------------------------------------------------------------- profiles
+
+    function myProfileId() {
+      if (!socket.data.profileId || !profiles.get(socket.data.profileId)) {
+        throw new GameError('Your profile is still loading — try again in a moment.');
+      }
+      return socket.data.profileId;
+    }
+
+    /** A device says hello with its signed profile (or nothing, the first time). */
+    on('profile:hello', (saved) => {
+      const profile = profiles.hello(saved);
+      socket.data.profileId = profile.id;
+      return profiles.snapshot(profile.id);
+    });
+
+    on('profile:get', () => profiles.snapshot(myProfileId()));
+
+    on('profile:claim', ({ kind, id }) => {
+      const pid = myProfileId();
+      const reward = profiles.claim(pid, kind, id);
+      return { reward, ...profiles.snapshot(pid) };
+    });
+
+    on('profile:buy', ({ itemId }) => {
+      const pid = myProfileId();
+      const item = profiles.buy(pid, itemId);
+      return { item: item.name, ...profiles.snapshot(pid) };
+    });
+
+    on('profile:equip', ({ avatar, frame }) => {
+      const pid = myProfileId();
+      profiles.equip(pid, { avatar, frame });
+      // Show the new look straight away if they're waiting in a lobby.
+      const room = rooms.get(socket.data.roomCode);
+      const p = profiles.get(pid);
+      if (room?.restyle(socket.data.playerId, { avatar: p.avatar, frame: p.frame })) broadcast(room);
+      return profiles.snapshot(pid);
+    });
+
+    on('leaderboard:get', ({ metric }) => profiles.leaderboard(String(metric || 'xp'), socket.data.profileId));
+
     // Home page subscribes to live stats + open rooms; the ack carries the first snapshot.
     on('lobby:watch', () => {
       socket.join(LOBBY_CHANNEL);
@@ -344,12 +429,30 @@ function createGameServer({
   function close() {
     clearInterval(sweeper);
     clearTimeout(lobbyPush);
+    profiles.dispose();
     for (const room of rooms.values()) room.dispose();
     io.close();
     server.close();
   }
 
-  return { app, server, io, rooms, close };
+  return { app, server, io, rooms, profiles, close };
+}
+
+/** Profile signatures must survive restarts: keep the key in the data folder if no env var is set. */
+function loadOrCreateSecret(dataDir) {
+  const file = path.join(dataDir, 'secret.key');
+  try {
+    return require('fs').readFileSync(file, 'utf8').trim();
+  } catch {
+    const secret = crypto.randomBytes(32).toString('hex');
+    try {
+      require('fs').mkdirSync(dataDir, { recursive: true });
+      require('fs').writeFileSync(file, secret, { mode: 0o600 });
+    } catch (err) {
+      console.warn('[profiles] could not save secret.key — set PROFILE_SECRET in production', err.message);
+    }
+    return secret;
+  }
 }
 
 function lanAddresses() {
@@ -361,8 +464,12 @@ function lanAddresses() {
 
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3000;
-  const game = createGameServer();
-  game.server.listen(port, () => {
+  const dataDir = process.env.DATA_DIR || path.join(__dirname, 'data');
+  const server = createGameServer({
+    profileSecret: process.env.PROFILE_SECRET || loadOrCreateSecret(dataDir),
+    profilesFile: path.join(dataDir, 'profiles.json'),
+  });
+  server.server.listen(port, () => {
     console.log(`Box Party running at http://localhost:${port}`);
     for (const ip of lanAddresses()) console.log(`  on your Wi-Fi:   http://${ip}:${port}`);
   });
@@ -375,9 +482,9 @@ if (require.main === module) {
       if (stopping) return;
       stopping = true;
       console.log(`${signal} received — shutting down`);
-      game.io.emit('notice', 'Server is restarting — reconnecting you automatically…');
+      server.io.emit('notice', 'Server is restarting — reconnecting you automatically…');
       setTimeout(() => {
-        game.close();
+        server.close();
         process.exit(0);
       }, 500).unref();
     });

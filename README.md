@@ -24,6 +24,7 @@ The rules are on the home page (with a live, self-playing demo board) and behind
 
 | | |
 |---|---|
+| 📈 **Rankings, goals and shop** | Every game earns **XP and credits**. Level up from Rookie to Grandmaster and climb the **global rankings** (XP, wins, win rate, best combo, boxes). Finish **daily challenges** and **progressive goals** that level up forever, then spend credits in the **shop** on premium avatars and animated frames (gold, frost, ember, prism) that everyone sees in game. No account needed: progress is saved on the device and **signed by the server**, so it can't be faked and survives server restarts. |
 | 💣 **Power-up cards** | Freeze a rival, draw a Double line, or Bomb a line off the board. Each has its own effect (frost flash, explosion with screen shake), and power-ups left are shown on the scoreboard. Bots use them too, saving them for the moment they'd otherwise have to give boxes away. |
 | ⚡ **Play vs AI in one tap** | Three bot levels. Easy is random-ish. Medium always takes free boxes and avoids 3rd sides. Hard also gives away the fewest points when it's forced to sacrifice. Bots can fill empty seats in any room. |
 | 📱 **Scan-to-join QR codes** | Every lobby shows a QR code. Point a phone at the screen and you're in. |
@@ -52,7 +53,7 @@ npm start
 
 Open http://localhost:3000. The console also prints a `http://192.168.x.x:3000` address that phones on the same Wi-Fi can use.
 
-There are 49 automated tests. They cover the rules, the AI, power-ups, room logic, full two-device and vs-bot games over real WebSockets, and production stress checks: junk and malicious input, spam, 20 games at once, host disconnects, full rooms, and cleanup.
+There are 61 automated tests. They cover the rules, the AI, power-ups, profiles (including anti-cheat signatures), room logic, full two-device and vs-bot games over real WebSockets, and production stress checks: junk and malicious input, spam, 20 games at once, host disconnects, full rooms, and cleanup.
 
 ```bash
 npm test
@@ -87,6 +88,7 @@ server.js          Express + Socket.IO: rooms, events, /api/lobby, /qr/:code.svg
 src/game.js        Pure Dots & Boxes rules (board, moves, star boxes, scoring)
 src/ai.js          Bot move and power-up selection (easy / medium / hard)
 src/room.js        Room state machine: players, bots, host, settings, turns, timer, power-ups, awards
+src/profiles.js    Signed player profiles: XP, levels, credits, goals, shop, leaderboard
 public/            Client (vanilla HTML/CSS/JS, no build step)
 test/              node:test suites
 ```
@@ -106,5 +108,11 @@ test/              node:test suites
 | `game:power` | `{ power: 'freeze'\|'double'\|'bomb', line? }` | Your turn, once each per game. `line` is only for Bomb |
 | `game:lobby` | – | Host only, after a game |
 | `room:leave` | – | |
+| `profile:hello` | `{ profile, sig }` or nothing | Restores (if the signature is valid) or creates this device's profile |
+| `profile:claim` | `{ kind: 'daily'\|'track', id }` | Claim a finished goal's credits |
+| `profile:buy` / `profile:equip` | `{ itemId }` / `{ avatar?, frame? }` | Shop purchases and cosmetics |
+| `leaderboard:get` | `{ metric }` | `xp`, `wins`, `winRate`, `bestCombo` or `boxes` |
 
-Server → client: `state` (full public room state), `notice` (toast text), `reaction`, `session:replaced`.
+Server → client: `state` (full public room state), `notice` (toast text), `reaction`, `profile:update` (rewards after a game), `lobby` (live stats), `session:replaced`.
+
+Profiles are stored in `data/profiles.json` (set `DATA_DIR` to move it). `PROFILE_SECRET` signs them; `render.yaml` generates one automatically.

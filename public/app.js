@@ -14,7 +14,9 @@
   const PAD = 26;
   const GREY = '#66635c';
   const AVATARS = ['crown', 'gem', 'star', 'moon', 'sun', 'zap', 'flame', 'leaf', 'anchor', 'compass', 'rocket', 'heart', 'spade', 'club', 'key', 'feather'];
-  const ICONS = new Set([...AVATARS, 'bot']);
+  const PREMIUM_AVATARS = ['ghost', 'cat', 'bird', 'flower', 'swords', 'skull'];
+  const ICONS = new Set([...AVATARS, ...PREMIUM_AVATARS, 'bot']);
+  const PROFILE_KEY = 'boxparty.profile'; // signed profile copy (shared by all tabs on this device)
   const REACTIONS = ['👏', '😂', '😱', '🔥', '😭', '🤯', '👀', '💀'];
   const LEVEL_LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -31,7 +33,9 @@
   let seenPowerSeq = null;
   let seenSkipSeq = null;
   let bombMode = false; // choosing a line to erase with the Bomb power
-  let avatar = AVATARS.includes(localStorage.getItem(AVATAR_KEY))
+  let me = null; // { profile, sig, view } from the server
+  let lastRewards = null; // rewards for the round that just ended
+  let avatar = ICONS.has(localStorage.getItem(AVATAR_KEY))
     ? localStorage.getItem(AVATAR_KEY)
     : AVATARS[Math.floor(Math.random() * AVATARS.length)];
   let level = LEVEL_LABEL[localStorage.getItem(LEVEL_KEY)] ? localStorage.getItem(LEVEL_KEY) : 'medium';
@@ -93,9 +97,10 @@
     return node;
   }
 
-  /** A player's avatar: their icon in their colour inside a round badge. */
-  function avatarBadge(name, color, size = '') {
-    return el('span', { className: `avatar ${size}`.trim(), '--c': color || GREY }, icon(ICONS.has(name) ? name : 'crown'));
+  /** A player's avatar: their icon in their colour inside a round badge, with an optional shop frame. */
+  function avatarBadge(name, color, size = '', frame = 'none') {
+    const classes = ['avatar', size, frame && frame !== 'none' ? `frame-${frame}` : ''].filter(Boolean).join(' ');
+    return el('span', { className: classes, '--c': color || GREY }, icon(ICONS.has(name) ? name : 'crown'));
   }
 
   function toast(text, isError = false) {
@@ -176,6 +181,7 @@
       bomb: () => { tone(140, 0, 0.45, 0.14, 'sawtooth'); tone(70, 0.05, 0.6, 0.12, 'square'); },
       freeze: () => [1568, 2093, 2637, 3136].forEach((f, i) => tone(f, i * 0.05, 0.25, 0.035)),
       double: () => { tone(700, 0, 0.1, 0.06, 'triangle'); tone(1050, 0.12, 0.16, 0.06, 'triangle'); },
+      coin: () => { tone(1320, 0, 0.08, 0.05, 'square'); tone(1760, 0.08, 0.14, 0.05, 'square'); },
     };
 
     return {
@@ -462,7 +468,7 @@
         btn.addEventListener('click', () => joinRoom(room.code));
         return el('article', { className: 'card room-card' }, [
           el('div', { className: 'room-top' }, [
-            avatarBadge(room.hostAvatar, 'var(--gold)', 'lg'),
+            avatarBadge(room.hostAvatar, 'var(--gold)', 'lg', room.hostFrame),
             el('div', {}, [
               el('div', { className: 'room-code-sm', textContent: room.code }),
               el('div', { className: 'muted small', textContent: `${room.host}'s room` }),
@@ -483,13 +489,32 @@
   }
 
   function renderProfilePickers() {
+    const owns = (a) => !PREMIUM_AVATARS.includes(a) || Boolean(me?.profile.owned.includes(`avatar:${a}`));
     $('avatarPicker').replaceChildren(
-      ...AVATARS.map((a) => {
-        const btn = el('button', { type: 'button', role: 'radio', 'aria-checked': String(a === avatar), 'aria-label': `Avatar: ${a}`, title: a }, icon(a));
+      ...[...AVATARS, ...PREMIUM_AVATARS].map((a) => {
+        const premium = PREMIUM_AVATARS.includes(a);
+        const locked = !owns(a);
+        const btn = el(
+          'button',
+          {
+            type: 'button',
+            className: [premium ? 'premium' : '', locked ? 'locked' : ''].join(' ').trim(),
+            role: 'radio',
+            'aria-checked': String(a === avatar),
+            'aria-label': locked ? `Avatar: ${a} (unlock in the shop)` : `Avatar: ${a}`,
+            title: locked ? `${a} — unlock in the shop` : a,
+          },
+          [icon(a), locked ? el('span', { className: 'lock-badge' }, icon('lock')) : null]
+        );
         btn.addEventListener('click', () => {
+          if (locked) {
+            toast('Unlock this avatar in the shop');
+            return openPanel('shop');
+          }
           avatar = a;
           localStorage.setItem(AVATAR_KEY, a);
           renderProfilePickers();
+          if (me) request('profile:equip', { avatar: a }).then((res) => res.ok && applySnapshot(res));
         });
         return btn;
       })
@@ -754,7 +779,7 @@
           remove.addEventListener('click', () => hostAction('room:removeBot', { botId: m.id }));
         }
         return el('li', { className: m.connected ? '' : 'offline', '--c': m.color || GREY }, [
-          avatarBadge(m.avatar, m.color),
+          avatarBadge(m.avatar, m.color, '', m.frame),
           el('span', { className: 'player-name', textContent: m.name }),
           ...tags,
           remove,
@@ -884,7 +909,7 @@
     else title = `Tie: ${winners.map((w) => (w.id === session.playerId ? 'you' : w.name)).join(' & ')}`;
 
     $('resultAvatar').replaceChildren(
-      ...(winners.length ? winners.map((w) => avatarBadge(w.avatar, w.color, 'xl')) : [avatarBadge('crown', 'var(--gold)', 'xl')])
+      ...(winners.length ? winners.map((w) => avatarBadge(w.avatar, w.color, 'xl', w.frame)) : [avatarBadge('crown', 'var(--gold)', 'xl')])
     );
     $('resultTitle').textContent = title;
     $('resultSub').textContent = `${best} ${best === 1 ? 'point' : 'points'}${winners.length > 1 ? ' each' : ''} · round ${state.round}`;
@@ -901,6 +926,7 @@
     );
     $('resultHostActions').hidden = !isHost();
     $('resultWait').hidden = isHost();
+    renderRewards();
   }
 
   function renderScoreboard(over) {
@@ -914,7 +940,7 @@
           '--c': p.color,
         }, [
           over ? el('span', { className: `rank${i === 0 ? ' first' : ''}`, textContent: String(i + 1) }) : null,
-          avatarBadge(p.avatar, p.color),
+          avatarBadge(p.avatar, p.color, '', p.frame),
           el('span', { className: 'player-name', textContent: p.id === session.playerId ? `${p.name} (you)` : p.name }),
           p.isBot ? el('span', { className: 'tag bot', textContent: LEVEL_LABEL[p.botLevel] }) : null,
           status ? el('span', { className: 'tag', textContent: status }) : null,
@@ -1061,6 +1087,310 @@
     }
   }
 
+  // ------------------------------------------------------------------ profile, rankings, goals, shop
+
+  const fmt = (n) => Number(n).toLocaleString('en-US');
+  const coin = (amount) => el('span', { className: 'goal-reward' }, [icon('coins'), `+${fmt(amount)}`]);
+
+  function loadSavedProfile() {
+    try {
+      return JSON.parse(localStorage.getItem(PROFILE_KEY));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Says hello with this device's signed profile; the server restores or creates it. */
+  async function helloProfile() {
+    const res = await request('profile:hello', loadSavedProfile());
+    if (res.ok) applySnapshot(res);
+  }
+
+  function applySnapshot(snap) {
+    if (!snap?.profile) return;
+    me = { profile: snap.profile, sig: snap.sig, view: snap.view };
+    localStorage.setItem(PROFILE_KEY, JSON.stringify({ profile: snap.profile, sig: snap.sig }));
+    // A premium avatar picked on another device but not owned here falls back to the profile's.
+    if (PREMIUM_AVATARS.includes(avatar) && !snap.profile.owned.includes(`avatar:${avatar}`)) {
+      avatar = snap.profile.avatar;
+      localStorage.setItem(AVATAR_KEY, avatar);
+    }
+    renderHud();
+    renderProfilePickers();
+    if ($('panel').open) renderPanel();
+  }
+
+  function renderHud() {
+    if (!me) return;
+    const { profile, view } = me;
+    $('creditCount').textContent = fmt(profile.credits);
+    $('goalsBadge').hidden = !view.claimable;
+    $('goalsBadge').textContent = view.claimable;
+    $('profileAvatar').replaceChildren(avatarBadge(profile.avatar, 'var(--gold)', '', profile.frame));
+    $('profileLevel').textContent = view.level;
+    $('profileBtn').title = `${profile.name} · Level ${view.level} ${view.title}`;
+  }
+
+  const PANELS = {
+    rankings: { icon: 'chart', eyebrow: 'Career rankings', title: 'Global rankings' },
+    goals: { icon: 'target', eyebrow: 'Challenges', title: 'Goals & rewards' },
+    shop: { icon: 'bag', eyebrow: 'Spend your credits', title: 'Shop' },
+    profile: { icon: 'user', eyebrow: 'Your career', title: 'Profile' },
+  };
+  const METRICS = [
+    { id: 'xp', label: 'XP', unit: 'XP' },
+    { id: 'wins', label: 'Wins', unit: 'wins' },
+    { id: 'winRate', label: 'Win rate', unit: 'win rate', suffix: '%' },
+    { id: 'bestCombo', label: 'Best combo', unit: 'boxes' },
+    { id: 'boxes', label: 'Boxes', unit: 'boxes' },
+  ];
+  const panel = { name: null, metric: 'xp', board: null };
+
+  function openPanel(name) {
+    panel.name = name;
+    const def = PANELS[name];
+    $('panelIcon').replaceChildren(icon(def.icon));
+    $('panelEyebrow').textContent = def.eyebrow;
+    $('panelTitle').textContent = def.title;
+    if (!$('panel').open) $('panel').showModal();
+    renderPanel();
+    if (name === 'rankings') loadRankings(panel.metric);
+    else if (me) request('profile:get').then((res) => res.ok && applySnapshot(res)); // fresh daily timer & rank
+  }
+
+  function renderPanel() {
+    const body = $('panelBody');
+    $('panelTabs').hidden = panel.name !== 'rankings';
+    if (!me && panel.name !== 'rankings') {
+      body.replaceChildren(el('p', { className: 'panel-empty', textContent: 'Loading your profile…' }));
+      return;
+    }
+    if (panel.name === 'rankings') renderRankings(body);
+    else if (panel.name === 'goals') renderGoals(body);
+    else if (panel.name === 'shop') renderShop(body);
+    else renderProfilePanel(body);
+  }
+
+  async function loadRankings(metric) {
+    panel.metric = metric;
+    panel.board = null;
+    renderPanel();
+    const res = await request('leaderboard:get', { metric });
+    if (res.ok && panel.name === 'rankings' && panel.metric === metric) {
+      panel.board = res;
+      renderPanel();
+    }
+  }
+
+  function renderRankings(body) {
+    $('panelTabs').replaceChildren(
+      ...METRICS.map((m) => {
+        const tab = el('button', { type: 'button', role: 'tab', 'aria-selected': String(m.id === panel.metric), textContent: m.label });
+        tab.addEventListener('click', () => loadRankings(m.id));
+        return tab;
+      })
+    );
+    const board = panel.board;
+    if (!board) return body.replaceChildren(el('p', { className: 'panel-empty', textContent: 'Loading rankings…' }));
+    const metric = METRICS.find((m) => m.id === board.metric);
+    const row = (r) =>
+      el('li', { className: `rank-row${r.me ? ' me' : ''}` }, [
+        el('span', { className: `rank-num${r.rank <= 3 ? ` r${r.rank}` : ''}` }, r.rank <= 3 ? icon(r.rank === 1 ? 'crown' : 'medal') : `#${r.rank}`),
+        avatarBadge(r.avatar, 'var(--gold)', '', r.frame),
+        el('span', { className: 'rank-who' }, [
+          el('b', { textContent: r.me ? `${r.name} (you)` : r.name }),
+          el('small', { textContent: `Lv ${r.level} ${r.title} · ${r.wins}/${r.games} wins` }),
+        ]),
+        el('span', { className: 'rank-value' }, [`${fmt(r.value)}${metric.suffix || ''}`, el('small', { textContent: metric.unit })]),
+      ]);
+    if (board.top.length === 0) {
+      return body.replaceChildren(
+        el('p', { className: 'panel-empty', textContent: metric.id === 'winRate' ? 'Win rate appears after 5 games.' : 'No ranked players yet — finish a game to claim #1!' })
+      );
+    }
+    body.replaceChildren(
+      el('p', { className: 'panel-note', textContent: `${fmt(board.players)} ranked ${board.players === 1 ? 'player' : 'players'} · finish games to climb` }),
+      el('ol', { className: 'rank-list' }, board.top.map(row)),
+      ...(board.me ? [el('ol', { className: 'rank-list' }, [row(board.me)])] : [])
+    );
+  }
+
+  function goalCard({ iconName, title, subtitle, progress, target, reward, claimed, onClaim }) {
+    const ready = !claimed && progress >= target;
+    const button = claimed
+      ? el('button', { className: 'btn outline', type: 'button', disabled: true }, [icon('check'), 'Claimed'])
+      : el('button', { className: `btn ${ready ? 'primary' : 'outline'}`, type: 'button', disabled: !ready }, ready ? ['Claim ', coin(reward)] : 'In progress');
+    if (ready) button.addEventListener('click', () => withBusy(button, onClaim));
+    return el('article', { className: `goal${ready ? ' ready' : ''}${claimed ? ' done' : ''}` }, [
+      el('span', { className: 'goal-icon' }, icon(iconName)),
+      el('span', { className: 'goal-text' }, [el('b', { textContent: title }), el('small', { textContent: subtitle })]),
+      coin(reward),
+      el('div', { className: 'goal-bar' }, [
+        el('span', { className: 'bar' }, el('i', { style: { width: `${Math.round((Math.min(progress, target) / target) * 100)}%` } })),
+        el('small', { textContent: `${fmt(Math.min(progress, target))} / ${fmt(target)}` }),
+      ]),
+      button,
+    ]);
+  }
+
+  async function claim(kind, id) {
+    const res = await request('profile:claim', { kind, id });
+    if (!res.ok) return toast(res.error, true);
+    applySnapshot(res);
+    sound.play('coin');
+    toast(`+${res.reward} credits`);
+  }
+
+  function renderGoals(body) {
+    const { view } = me;
+    const hours = Math.floor(view.dailyResetsInMs / 3_600_000);
+    const minutes = Math.floor((view.dailyResetsInMs % 3_600_000) / 60_000);
+    body.replaceChildren(
+      el('div', { className: 'panel-section' }, [el('h3', { textContent: 'Daily challenges' }), el('span', { className: 'panel-note', textContent: `New in ${hours}h ${minutes}m` })]),
+      ...view.daily.map((g) =>
+        goalCard({ iconName: 'target', title: g.text, subtitle: 'Today only', progress: g.progress, target: g.target, reward: g.reward, claimed: g.claimed, onClaim: () => claim('daily', g.id) })
+      ),
+      el('div', { className: 'panel-section' }, [el('h3', { textContent: 'Progressive goals' }), el('span', { className: 'panel-note', textContent: 'Each claim unlocks a harder level' })]),
+      ...view.tracks.map((t) =>
+        goalCard({ iconName: t.icon, title: `${t.name} · Lv ${t.level}`, subtitle: t.text, progress: t.progress, target: t.target, reward: t.reward, claimed: false, onClaim: () => claim('track', t.id) })
+      )
+    );
+  }
+
+  async function buy(item) {
+    const res = await request('profile:buy', { itemId: item.id });
+    if (!res.ok) return toast(res.error, true);
+    sound.play('coin');
+    toast(`Unlocked ${res.item}!`);
+    await equip(item); // put it on straight away
+  }
+
+  async function equip(item) {
+    const res = await request('profile:equip', item.kind === 'avatar' ? { avatar: item.value } : { frame: item.value });
+    if (!res.ok) return toast(res.error, true);
+    if (item.kind === 'avatar') {
+      avatar = item.value;
+      localStorage.setItem(AVATAR_KEY, avatar);
+    }
+    applySnapshot(res);
+  }
+
+  function renderShop(body) {
+    const { profile, view } = me;
+    const card = (item) => {
+      const preview =
+        item.kind === 'avatar'
+          ? avatarBadge(item.value, 'var(--gold)', '', profile.frame)
+          : avatarBadge(profile.avatar, 'var(--gold)', '', item.value);
+      let button;
+      if (item.equipped) {
+        button = el('button', { className: 'btn outline', type: 'button', disabled: true }, [icon('check'), 'Equipped']);
+      } else if (item.owned) {
+        button = el('button', { className: 'btn outline', type: 'button', textContent: 'Equip' });
+        button.addEventListener('click', () => withBusy(button, () => equip(item)));
+      } else {
+        const short = item.price - profile.credits;
+        button = el('button', { className: 'btn primary', type: 'button', disabled: short > 0 }, short > 0 ? `Need ${fmt(short)} more` : `Buy for ${fmt(item.price)}`);
+        if (short <= 0) button.addEventListener('click', () => withBusy(button, () => buy(item)));
+      }
+      return el('article', { className: `shop-item${item.equipped ? ' equipped' : ''}` }, [
+        preview,
+        el('b', { textContent: item.name }),
+        el('span', { className: 'price' }, item.owned ? 'Owned' : [icon('coins'), fmt(item.price)]),
+        button,
+      ]);
+    };
+    const frames = view.shop.filter((i) => i.kind === 'frame');
+    const ownsAnyFrame = frames.some((i) => i.owned);
+    let removeFrame = null;
+    if (ownsAnyFrame && profile.frame !== 'none') {
+      removeFrame = el('button', { className: 'btn ghost', type: 'button', textContent: 'Remove frame' });
+      removeFrame.addEventListener('click', () => withBusy(removeFrame, () => equip({ kind: 'frame', value: 'none' })));
+    }
+    body.replaceChildren(
+      el('div', { className: 'shop-balance' }, [
+        el('span', {}, [el('small', { className: 'panel-note', textContent: 'Your credits' }), el('br'), el('b', { textContent: fmt(profile.credits) })]),
+        el('span', { className: 'panel-note', textContent: 'Earn more from wins, level-ups and goals' }),
+      ]),
+      el('div', { className: 'panel-section' }, [el('h3', { textContent: 'Premium avatars' })]),
+      el('div', { className: 'shop-grid' }, view.shop.filter((i) => i.kind === 'avatar').map(card)),
+      el('div', { className: 'panel-section' }, [el('h3', { textContent: 'Avatar frames' }), el('span', { className: 'panel-note', textContent: 'Everyone sees them in game' })]),
+      el('div', { className: 'shop-grid' }, frames.map(card)),
+      ...(removeFrame ? [removeFrame] : [])
+    );
+  }
+
+  function renderProfilePanel(body) {
+    const { profile, view } = me;
+    const s = profile.stats;
+    const stats = [
+      ['Games', s.games],
+      ['Wins', s.wins],
+      ['Win rate', `${view.winRate}%`],
+      ['Global rank', view.rank ? `#${view.rank}` : '—'],
+      ['Boxes claimed', s.boxes],
+      ['Best combo', s.bestCombo],
+      ['Win streak', `${s.streak} (best ${s.bestStreak})`],
+      ['Power-ups used', s.powers],
+      ['Star boxes', s.stars],
+      ['Hard bots beaten', s.hardWins],
+    ];
+    const toGoals = el('button', { className: 'btn outline', type: 'button' }, [icon('target'), 'Goals']);
+    const toShop = el('button', { className: 'btn primary', type: 'button' }, [icon('bag'), 'Shop']);
+    toGoals.addEventListener('click', () => openPanel('goals'));
+    toShop.addEventListener('click', () => openPanel('shop'));
+    body.replaceChildren(
+      el('div', { className: 'profile-hero' }, [
+        avatarBadge(profile.avatar, 'var(--gold)', '', profile.frame),
+        el('div', {}, [
+          el('h3', { textContent: profile.name }),
+          el('small', { textContent: `Level ${view.level} · ${view.title} · ${fmt(profile.credits)} credits` }),
+        ]),
+      ]),
+      el('div', { className: 'xp' }, [
+        el('div', { className: 'xp-line' }, [el('span', { textContent: `Level ${view.level}` }), el('span', { textContent: `${fmt(view.levelXp)} / ${fmt(view.nextLevelXp)} XP` })]),
+        el('span', { className: 'bar' }, el('i', { style: { width: `${Math.round((view.levelXp / view.nextLevelXp) * 100)}%` } })),
+      ]),
+      el('dl', { className: 'stat-grid' }, stats.map(([label, value]) => el('div', {}, [el('dt', { textContent: label }), el('dd', { textContent: typeof value === 'number' ? fmt(value) : value })]))),
+      el('div', { className: 'row' }, [toGoals, toShop]),
+      el('p', { className: 'panel-note', textContent: 'Your progress is saved on this device and secured by the server — no account needed.' })
+    );
+  }
+
+  /** XP / credits / level-up chips on the results card. */
+  function renderRewards() {
+    const box = $('rewards');
+    const r = lastRewards;
+    box.hidden = !r || !state || r.round !== state.round || state.phase !== 'over';
+    if (box.hidden) return;
+    const chips = [
+      el('span', { className: 'reward-chip' }, [icon('zap'), `+${fmt(r.xp)} XP`]),
+      r.credits ? el('span', { className: 'reward-chip' }, [icon('coins'), `+${fmt(r.credits)} credits`]) : null,
+      r.levelUp ? el('span', { className: 'reward-chip level' }, [icon('crown'), `Level ${r.levelUp}!`]) : null,
+    ];
+    if (r.claimable) {
+      const goals = el('button', { className: 'reward-chip claim', type: 'button' }, [icon('target'), `${r.claimable} to claim`]);
+      goals.addEventListener('click', () => openPanel('goals'));
+      chips.push(goals);
+    }
+    box.replaceChildren(...chips.filter(Boolean));
+  }
+
+  function onProfileUpdate(snap) {
+    applySnapshot(snap);
+    const r = snap.rewards;
+    if (!r) return;
+    lastRewards = { ...r, round: state?.round };
+    renderRewards();
+    if (r.levelUp) {
+      setTimeout(() => {
+        toast(`Level up! You're now level ${r.levelUp} — ${me.view.title}`);
+        sound.play('win');
+        confetti.burst(['#e2b968', '#f6dfa6', '#ffffff'], 90);
+      }, 1200);
+    }
+  }
+
   // ------------------------------------------------------------------ wiring
 
   function init() {
@@ -1139,8 +1469,15 @@
     board.addEventListener('pointermove', updatePreview);
     board.addEventListener('pointerleave', () => updatePreview(null));
 
-    socket.on('connect', () => {
+    document.querySelectorAll('[data-panel]').forEach((btn) => btn.addEventListener('click', () => openPanel(btn.dataset.panel)));
+    $('panelClose').addEventListener('click', () => $('panel').close());
+    $('panel').addEventListener('click', (e) => {
+      if (e.target === $('panel')) $('panel').close(); // click on the backdrop
+    });
+
+    socket.on('connect', async () => {
       watchingLobby = false; // a fresh connection has no subscriptions yet
+      await helloProfile(); // before joining, so the room links this player to their profile
       if (session) resume();
       else if (!state) showView('home');
       if (currentView === 'home') watchLobby(true);
@@ -1151,6 +1488,7 @@
     socket.on('state', onState);
     socket.on('notice', (text) => toast(text));
     socket.on('reaction', showReaction);
+    socket.on('profile:update', onProfileUpdate);
     socket.on('lobby', (snapshot) => {
       if (currentView === 'home') renderDirectory(snapshot);
     });

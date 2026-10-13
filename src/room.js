@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const game = require('./game');
 const ai = require('./ai');
+const { ALL_AVATARS, FRAMES } = require('./profiles');
 
 const MAX_SEATS = 6; // players per round (humans + bots)
 const MAX_MEMBERS = 16; // players + spectators
@@ -113,7 +114,7 @@ class Room {
     if (this.members.length >= MAX_MEMBERS) throw new GameError('This room is full.');
     const member = this.addMember({
       name: this.uniqueName(cleanName(rawName)),
-      avatar: AVATARS.includes(avatar) ? avatar : AVATARS[Math.floor(this.rand() * AVATARS.length)],
+      avatar: ALL_AVATARS.includes(avatar) ? avatar : AVATARS[Math.floor(this.rand() * AVATARS.length)],
       token: randomId(16),
       isBot: false,
       botLevel: null,
@@ -126,6 +127,8 @@ class Room {
     const member = {
       id: randomId(6),
       color: null,
+      frame: 'none',
+      profileId: null,
       seated: false,
       connected: true,
       disconnectedAt: null,
@@ -145,6 +148,15 @@ class Room {
       const candidate = `${name.slice(0, 13)} ${i}`;
       if (!taken.has(candidate.toLowerCase())) return candidate;
     }
+  }
+
+  /** Applies a player's equipped avatar / frame — never mid-game; a rematch picks it up. */
+  restyle(id, { avatar, frame } = {}) {
+    const member = this.getMember(id);
+    if (!member || member.isBot || this.phase === 'playing') return false;
+    if (ALL_AVATARS.includes(avatar)) member.avatar = avatar;
+    if (FRAMES.includes(frame)) member.frame = frame;
+    return true;
   }
 
   /** Hosts are always humans, preferably online ones. */
@@ -284,11 +296,11 @@ class Room {
       ? game.randomStars(n, Math.max(2, Math.round((n * n) / 6)), this.rand)
       : [];
     this.board = game.createBoard(n, { stars });
-    this.roster = players.map(({ id, name, color, avatar, isBot, botLevel }) => ({
-      id, name, color, avatar, isBot, botLevel,
+    this.roster = players.map(({ id, name, color, avatar, frame, isBot, botLevel }) => ({
+      id, name, color, avatar, frame, isBot, botLevel,
     }));
     this.stats = Object.fromEntries(
-      players.map((p) => [p.id, { moves: 0, stars: 0, bestCombo: 0, thinkMs: 0, timedMoves: 0, powers: 0 }])
+      players.map((p) => [p.id, { moves: 0, stars: 0, bestCombo: 0, combos: 0, thinkMs: 0, timedMoves: 0, powers: 0 }])
     );
     this.powers = Object.fromEntries(players.map((p) => [p.id, { freeze: true, double: true, bomb: true }]));
     this.frozenId = null;
@@ -337,6 +349,7 @@ class Room {
       stats.timedMoves++;
     }
     if (claimed.length > 0) {
+      if (this.combo < 3 && this.combo + claimed.length >= 3) stats.combos++; // a combo of 3+ boxes
       this.combo += claimed.length;
       stats.bestCombo = Math.max(stats.bestCombo, this.combo);
       stats.stars += claimed.filter(({ r, c }) => this.board.stars[r][c]).length;
@@ -561,6 +574,7 @@ class Room {
       code: this.code,
       host: host?.name ?? '—',
       hostAvatar: host?.avatar ?? 'crown',
+      hostFrame: host?.frame ?? 'none',
       phase: this.phase,
       players: this.members.filter((m) => m.seated).length,
       maxSeats: MAX_SEATS,
@@ -582,8 +596,8 @@ class Room {
       options: { gridSizes: GRID_SIZES, turnSeconds: TURN_OPTIONS, botLevels: ai.LEVELS },
       maxSeats: MAX_SEATS,
       round: this.round,
-      members: this.members.map(({ id, name, avatar, color, seated, connected, wins, isBot, botLevel }) => ({
-        id, name, avatar, color, seated, connected, wins, isBot, botLevel,
+      members: this.members.map(({ id, name, avatar, frame, color, seated, connected, wins, isBot, botLevel }) => ({
+        id, name, avatar, frame, color, seated, connected, wins, isBot, botLevel,
       })),
       game: this.board && {
         size: this.board.size,
