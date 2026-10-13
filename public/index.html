@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Box Party — real-time multiplayer Dots &amp; Boxes</title>
+  <meta name="description" content="Connect the dots, steal the boxes. Play Dots & Boxes live with 2–6 friends or smart AI bots — every player on their own phone or laptop. Room code, QR join, no sign-up.">
+  <meta name="theme-color" content="#09090c">
+  <meta property="og:title" content="Box Party — multiplayer Dots & Boxes">
+  <meta property="og:description" content="Real-time Dots & Boxes for 2–6 players. Join with a code or QR — no sign-up.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2309090c'/%3E%3Crect x='9' y='9' width='14' height='14' rx='2' fill='%23e2b968'/%3E%3Ccircle cx='9' cy='9' r='3' fill='%23f4f1ea'/%3E%3Ccircle cx='23' cy='9' r='3' fill='%23f4f1ea'/%3E%3Ccircle cx='9' cy='23' r='3' fill='%23f4f1ea'/%3E%3Ccircle cx='23' cy='23' r='3' fill='%23f4f1ea'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></symbol>
+    <symbol id="i-volume-x" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="m22 9-6 6"/><path d="m16 9 6 6"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.59 13.51 6.83 3.98"/><path d="m15.41 6.51-6.82 3.98"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol>
+    <symbol id="i-crown" viewBox="0 0 24 24"><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7Z"/><path d="M5 20h14"/></symbol>
+    <symbol id="i-gem" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/></symbol>
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></symbol>
+    <symbol id="i-anchor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></symbol>
+    <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12Z"/></symbol>
+    <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09Z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2Z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></symbol>
+    <symbol id="i-spade" viewBox="0 0 24 24"><path d="M5 9c-1.5 1.5-3 3.2-3 5.5A5.5 5.5 0 0 0 7.5 20c1.8 0 3-.5 4.5-2 1.5 1.5 2.7 2 4.5 2a5.5 5.5 0 0 0 5.5-5.5c0-2.3-1.5-4-3-5.5l-7-7-7 7Z"/><path d="M12 18v4"/></symbol>
+    <symbol id="i-club" viewBox="0 0 24 24"><path d="M17.28 9.05a5.5 5.5 0 1 0-10.56 0A5.5 5.5 0 1 0 12 17.66a5.5 5.5 0 1 0 5.28-8.6Z"/><path d="M12 17.66V22"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></symbol>
+    <symbol id="i-feather" viewBox="0 0 24 24"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5Z"/><path d="M16 8 2 22"/><path d="M17.5 15H9"/></symbol>
+  </svg>
+  <div class="bg" aria-hidden="true"></div>
+  <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Box Party home">
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="8" y="8" width="16" height="16" class="logo-fill"/>
+          <path d="M8 8h16v16H8z" class="logo-line"/>
+          <circle cx="8" cy="8" r="2.6"/><circle cx="24" cy="8" r="2.6"/><circle cx="8" cy="24" r="2.6"/><circle cx="24" cy="24" r="2.6"/>
+        </svg>
+        <span class="wordmark">Box <em>Party</em></span>
+      </a>
+      <div class="topbar-actions">
+        <span id="onlinePill" class="pill" hidden><span class="pulse"></span><b id="onlineCount">0</b>&nbsp;online</span>
+        <span id="roomBadge" class="pill code-pill" hidden></span>
+        <button id="soundBtn" class="icon-btn" type="button" aria-label="Toggle sound" title="Sound"><svg class="icon" aria-hidden="true"><use href="#i-volume"/></svg></button>
+        <button id="rulesBtn" class="icon-btn" type="button" aria-label="How to play" title="How to play"><svg class="icon" aria-hidden="true"><use href="#i-help"/></svg></button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============================== HOME ============================== -->
+    <section id="homeView" class="view home" hidden>
+      <div class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Real-time multiplayer · 2–6 players · No sign-up</p>
+          <h1 class="headline">Connect the dots.<br><em>Steal the boxes.</em></h1>
+          <p class="lede">The classic pen-and-paper duel, rebuilt for the group chat. Everyone plays on their own phone, every move syncs instantly, and the sharpest mind takes the crown.</p>
+          <dl class="stats">
+            <div><dt><span class="pulse"></span>Online now</dt><dd id="statOnline">–</dd></div>
+            <div><dt>Live games</dt><dd id="statLive">–</dd></div>
+            <div><dt>Games finished</dt><dd id="statPlayed">–</dd></div>
+          </dl>
+        </div>
+
+        <div class="card join-card">
+          <div class="card-title">
+            <span class="step">01</span>
+            <h2>Who's playing?</h2>
+          </div>
+          <div class="avatar-row" id="avatarPicker" role="radiogroup" aria-label="Pick an avatar"></div>
+          <label class="field">
+            <span>Your name</span>
+            <input id="nameInput" maxlength="16" autocomplete="nickname" placeholder="e.g. Sam" enterkeyhint="go">
+          </label>
+
+          <button id="createBtn" class="btn primary" type="button">Create a room <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+
+          <div class="quickplay">
+            <button id="quickBtn" class="btn secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#i-zap"/></svg> Play vs AI now</button>
+            <div class="segmented" id="levelPicker" role="radiogroup" aria-label="Bot difficulty">
+              <button type="button" data-level="easy" role="radio">Easy</button>
+              <button type="button" data-level="medium" role="radio">Medium</button>
+              <button type="button" data-level="hard" role="radio">Hard</button>
+            </div>
+          </div>
+
+          <div class="divider"><span>or join a friend</span></div>
+          <form id="joinForm" class="join-row" novalidate>
+            <input id="codeInput" class="code-input" maxlength="4" placeholder="CODE" aria-label="Room code"
+                   autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="go">
+            <button class="btn outline" type="submit">Join</button>
+          </form>
+          <p id="homeError" class="error" role="alert"></p>
+        </div>
+      </div>
+
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Live directory</p>
+            <h2>Open rooms</h2>
+          </div>
+          <span class="live-note"><span class="pulse"></span>Updates live</span>
+        </div>
+        <div id="roomList" class="room-grid"></div>
+      </section>
+
+      <section class="section how">
+        <div class="how-steps">
+          <p class="eyebrow">How to play</p>
+          <h2>Learn it in twenty seconds</h2>
+          <ol class="steps">
+            <li><span class="step">01</span><div><h3>Draw a line</h3><p>On your turn, tap between two neighbouring dots.</p></div></li>
+            <li><span class="step">02</span><div><h3>Close a box</h3><p>Draw the fourth side of a box to claim it — then go again.</p></div></li>
+            <li><span class="step">03</span><div><h3>Most points wins</h3><p>When the board is full, the highest score takes the crown.</p></div></li>
+          </ol>
+          <p class="tip"><svg class="icon" aria-hidden="true"><use href="#i-bulb"/></svg><span><b>Tip</b> Never draw the third side of a box — the next player will steal it.</span></p>
+        </div>
+        <div class="card demo-card">
+          <div class="demo-head">
+            <span class="pill"><span class="pulse"></span>Live demo</span>
+            <span id="demoScore" class="demo-score"></span>
+          </div>
+          <svg id="demoBoard" class="board" role="img" aria-label="An animated example game"></svg>
+        </div>
+      </section>
+
+      <section class="section">
+        <p class="eyebrow">Why it's fun</p>
+        <h2>More than dots</h2>
+        <div class="feature-grid">
+          <article class="feature"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#i-bot"/></svg></span><h3>Smart AI bots</h3><p>Three difficulty levels. Fill empty seats or practise solo — the Hard bot never gifts a box it can avoid.</p></article>
+          <article class="feature"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#i-qr"/></svg></span><h3>Scan to join</h3><p>Every room has a QR code. Point a phone at the screen and you're in — no app, no account.</p></article>
+          <article class="feature"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg></span><h3>Star boxes</h3><p>Turn on Star mode and golden boxes are worth double. Plan your chains around them.</p></article>
+          <article class="feature"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#i-flame"/></svg></span><h3>Combos &amp; awards</h3><p>Chain boxes for combo moments, then collect titles like Combo King and Lightning Hands.</p></article>
+          <article class="feature"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#i-message"/></svg></span><h3>Live reactions</h3><p>Send emoji that float across every player's screen in real time. Friendly trash talk included.</p></article>
+          <article class="feature"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg></span><h3>Never lose your seat</h3><p>Refresh, switch apps or drop Wi-Fi — you're placed right back into your game.</p></article>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span class="wordmark">Box <em>Party</em></span>
+        <span>Real-time multiplayer Dots &amp; Boxes</span>
+      </footer>
+    </section>
+
+    <!-- ============================== LOADING ============================== -->
+    <section id="loadingView" class="view center-view">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="loadingText" class="muted">Connecting…</p>
+    </section>
+
+    <!-- ============================== LOBBY ============================== -->
+    <section id="lobbyView" class="view lobby" hidden>
+      <div class="card invite">
+        <p class="eyebrow">Room code</p>
+        <div id="lobbyCode" class="room-code"></div>
+        <div class="qr-wrap"><img id="qrImg" alt="QR code to join this room" width="160" height="160"></div>
+        <p class="muted small">Scan with a phone camera, or open <b id="siteHost"></b> and enter the code.</p>
+        <div class="row">
+          <button id="copyLinkBtn" class="btn outline" type="button"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg> Copy link</button>
+          <button id="shareBtn" class="btn outline" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-share"/></svg> Share</button>
+        </div>
+      </div>
+
+      <div class="lobby-side">
+        <div class="card">
+          <div class="card-head">
+            <h2>Players</h2>
+            <span id="playerCount" class="pill"></span>
+          </div>
+          <ul id="lobbyPlayers" class="player-list"></ul>
+          <div id="botControls" class="bot-controls">
+            <span class="muted small">Add a bot</span>
+            <button type="button" class="chip" data-bot="easy"><svg class="icon" aria-hidden="true"><use href="#i-bot"/></svg> Easy</button>
+            <button type="button" class="chip" data-bot="medium"><svg class="icon" aria-hidden="true"><use href="#i-bot"/></svg> Medium</button>
+            <button type="button" class="chip" data-bot="hard"><svg class="icon" aria-hidden="true"><use href="#i-bot"/></svg> Hard</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Game settings</h2><span id="hostOnly" class="muted small"></span></div>
+          <div class="setting">
+            <span class="setting-label">Board size</span>
+            <div id="sizePicker" class="segmented" role="radiogroup" aria-label="Board size"></div>
+          </div>
+          <div class="setting">
+            <span class="setting-label">Turn timer</span>
+            <div id="timerPicker" class="segmented" role="radiogroup" aria-label="Turn timer"></div>
+          </div>
+          <label class="toggle">
+            <span class="toggle-text"><b>Star boxes</b><small>Golden boxes are worth 2 points</small></span>
+            <input type="checkbox" id="starsToggle">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="toggle">
+            <span class="toggle-text"><b>Public room</b><small>List in Open rooms so anyone can join</small></span>
+            <input type="checkbox" id="publicToggle">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <button id="startBtn" class="btn primary" type="button">Start game</button>
+          <p id="startHint" class="muted small center"></p>
+        </div>
+        <button id="leaveBtn" class="btn ghost" type="button"><svg class="icon" aria-hidden="true"><use href="#i-logout"/></svg> Leave room</button>
+      </div>
+    </section>
+
+    <!-- ============================== GAME ============================== -->
+    <section id="gameView" class="view game" hidden>
+      <div class="game-main">
+        <div id="turnBanner" class="turn-banner">
+          <span id="turnAvatar" class="turn-avatar"></span>
+          <div id="turnText" class="turn-text"></div>
+          <span id="secondsLeft" class="seconds"></span>
+          <div class="timer" aria-hidden="true"><div id="timerBar" class="timer-bar"></div></div>
+        </div>
+
+        <div id="resultCard" class="card result" hidden>
+          <div id="resultAvatar" class="result-avatar"></div>
+          <div id="resultTitle" class="result-title"></div>
+          <p id="resultSub" class="muted"></p>
+          <div id="awards" class="awards"></div>
+          <div id="resultHostActions" class="row">
+            <button id="againBtn" class="btn primary" type="button"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> Rematch</button>
+            <button id="lobbyBtn" class="btn outline" type="button">Change settings</button>
+          </div>
+          <p id="resultWait" class="muted small">Waiting for the host to start the next round…</p>
+        </div>
+
+        <div class="board-wrap">
+          <svg id="board" class="board" role="img" aria-label="Game board"></svg>
+          <div id="comboPop" class="combo-pop" aria-live="polite"></div>
+          <div id="reactionLayer" class="reaction-layer" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <aside class="game-side">
+        <p class="eyebrow">Scoreboard</p>
+        <ul id="scoreboard" class="scoreboard"></ul>
+        <div class="reactions" id="reactionBar" aria-label="Send a reaction"></div>
+        <p id="watchers" class="muted small center"></p>
+        <button id="leaveGameBtn" class="btn ghost" type="button"><svg class="icon" aria-hidden="true"><use href="#i-logout"/></svg> Leave room</button>
+      </aside>
+    </section>
+  </main>
+
+  <dialog id="rulesDialog" class="dialog">
+    <p class="eyebrow">Rules</p>
+    <h2>How to play</h2>
+    <ol class="rules">
+      <li>On your turn, tap the gap between two neighbouring dots to <b>draw a line</b>.</li>
+      <li>If your line closes the <b>fourth side of a box</b>, the box is yours and you <b>go again</b>.</li>
+      <li>If you don't close a box, the turn passes to the next player.</li>
+      <li>When every box is taken, the player with <b>the most points wins</b>. Ties share the win.</li>
+      <li><b>Star boxes</b> (if the host turns them on) are worth 2 points.</li>
+      <li>Each turn has a <b>timer</b>. Run out of time and your turn is skipped.</li>
+    </ol>
+    <p class="tip"><svg class="icon" aria-hidden="true"><use href="#i-bulb"/></svg><span><b>Tip</b> Avoid drawing the third side of a box — the next player will simply close it.</span></p>
+    <form method="dialog"><button class="btn primary">Got it</button></form>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
