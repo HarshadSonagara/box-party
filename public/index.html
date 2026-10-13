@@ -48,6 +48,9 @@
     <symbol id="i-club" viewBox="0 0 24 24"><path d="M17.28 9.05a5.5 5.5 0 1 0-10.56 0A5.5 5.5 0 1 0 12 17.66a5.5 5.5 0 1 0 5.28-8.6Z"/><path d="M12 17.66V22"/></symbol>
     <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></symbol>
     <symbol id="i-feather" viewBox="0 0 24 24"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5Z"/><path d="M16 8 2 22"/><path d="M17.5 15H9"/></symbol>
+    <symbol id="i-snowflake" viewBox="0 0 24 24"><path d="M2 12h20"/><path d="M12 2v20"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/></symbol>
+    <symbol id="i-bomb" viewBox="0 0 24 24"><circle cx="11" cy="13" r="9"/><path d="M14.35 4.65 16.3 2.7a2.41 2.41 0 0 1 3.4 0l1.6 1.6a2.4 2.4 0 0 1 0 3.4l-1.95 1.95"/><path d="m22 2-1.5 1.5"/></symbol>
+    <symbol id="i-double" viewBox="0 0 24 24"><path d="M4 8h16"/><path d="M4 16h16"/><circle cx="4" cy="8" r="1.5"/><circle cx="20" cy="8" r="1.5"/><circle cx="4" cy="16" r="1.5"/><circle cx="20" cy="16" r="1.5"/></symbol>
   </svg>
   <div class="bg" aria-hidden="true"></div>
   <canvas id="confetti" class="confetti" aria-hidden="true"></canvas>
@@ -136,7 +139,8 @@
           <ol class="steps">
             <li><span class="step">01</span><div><h3>Draw a line</h3><p>On your turn, tap between two neighbouring dots.</p></div></li>
             <li><span class="step">02</span><div><h3>Close a box</h3><p>Draw the fourth side of a box to claim it — then go again.</p></div></li>
-            <li><span class="step">03</span><div><h3>Most points wins</h3><p>When the board is full, the highest score takes the crown.</p></div></li>
+            <li><span class="step">03</span><div><h3>Play your power-ups</h3><p>Freeze a rival, draw a double line or bomb a line off the board — once each per game.</p></div></li>
+            <li><span class="step">04</span><div><h3>Most points wins</h3><p>When the board is full, the highest score takes the crown.</p></div></li>
           </ol>
           <p class="tip"><svg class="icon" aria-hidden="true"><use href="#i-bulb"/></svg><span><b>Tip</b> Never draw the third side of a box — the next player will steal it.</span></p>
         </div>
@@ -153,6 +157,7 @@
         <p class="eyebrow">Why it's fun</p>
         <h2>More than dots</h2>
         <div class="feature-grid">
+          <article class="feature feature-hero"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#i-bomb"/></svg></span><div><p class="eyebrow">New</p><h3>Power-up cards</h3><p>Every player gets three game-changers: <b>Freeze</b> a rival's turn, draw a <b>Double</b> line to trap and steal your own box, or <b>Bomb</b> a line clean off the board. Comebacks guaranteed.</p></div></article>
           <article class="feature"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#i-bot"/></svg></span><h3>Smart AI bots</h3><p>Three difficulty levels. Fill empty seats or practise solo — the Hard bot never gifts a box it can avoid.</p></article>
           <article class="feature"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#i-qr"/></svg></span><h3>Scan to join</h3><p>Every room has a QR code. Point a phone at the screen and you're in — no app, no account.</p></article>
           <article class="feature"><span class="feature-icon"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg></span><h3>Star boxes</h3><p>Turn on Star mode and golden boxes are worth double. Plan your chains around them.</p></article>
@@ -218,6 +223,11 @@
             <span class="switch" aria-hidden="true"></span>
           </label>
           <label class="toggle">
+            <span class="toggle-text"><b>Power-ups</b><small>Freeze, Double and Bomb — one of each per player</small></span>
+            <input type="checkbox" id="powersToggle">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="toggle">
             <span class="toggle-text"><b>Public room</b><small>List in Open rooms so anyone can join</small></span>
             <input type="checkbox" id="publicToggle">
             <span class="switch" aria-hidden="true"></span>
@@ -237,6 +247,18 @@
           <div id="turnText" class="turn-text"></div>
           <span id="secondsLeft" class="seconds"></span>
           <div class="timer" aria-hidden="true"><div id="timerBar" class="timer-bar"></div></div>
+        </div>
+
+        <div id="powerBar" class="power-bar" role="group" aria-label="Power-ups" hidden>
+          <button type="button" class="power" data-power="freeze" title="The next player misses their turn">
+            <span class="power-icon"><svg class="icon" aria-hidden="true"><use href="#i-snowflake"/></svg></span><span class="power-text"><b>Freeze</b><small>Skip the next player</small></span>
+          </button>
+          <button type="button" class="power" data-power="double" title="Your next line won't end your turn">
+            <span class="power-icon"><svg class="icon" aria-hidden="true"><use href="#i-double"/></svg></span><span class="power-text"><b>Double</b><small>Draw two lines</small></span>
+          </button>
+          <button type="button" class="power" data-power="bomb" title="Erase a line that isn't part of a claimed box">
+            <span class="power-icon"><svg class="icon" aria-hidden="true"><use href="#i-bomb"/></svg></span><span class="power-text"><b>Bomb</b><small>Erase a line</small></span>
+          </button>
         </div>
 
         <div id="resultCard" class="card result" hidden>
@@ -278,6 +300,9 @@
       <li>When every box is taken, the player with <b>the most points wins</b>. Ties share the win.</li>
       <li><b>Star boxes</b> (if the host turns them on) are worth 2 points.</li>
       <li>Each turn has a <b>timer</b>. Run out of time and your turn is skipped.</li>
+      <li><b>Power-ups</b> (on by default): everyone gets three, each usable once per game on your own turn —
+        <b>Freeze</b> makes the next player miss a turn, <b>Double</b> lets your next line keep your turn,
+        <b>Bomb</b> erases any line that isn't part of a claimed box.</li>
     </ol>
     <p class="tip"><svg class="icon" aria-hidden="true"><use href="#i-bulb"/></svg><span><b>Tip</b> Avoid drawing the third side of a box — the next player will simply close it.</span></p>
     <form method="dialog"><button class="btn primary">Got it</button></form>

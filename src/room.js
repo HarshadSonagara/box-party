@@ -13,6 +13,7 @@ const COLORS = ['#f0607a', '#5b9bff', '#3fcf98', '#f2a23c', '#a989ff', '#33c3d0'
 const AVATARS = ['crown', 'gem', 'star', 'moon', 'sun', 'zap', 'flame', 'leaf', 'anchor', 'compass', 'rocket', 'heart', 'spade', 'club', 'key', 'feather'];
 const BOT_AVATAR = 'bot';
 const BOT_NAMES = ['Pixel', 'Byte', 'Turbo', 'Glitch', 'Nova', 'Circuit'];
+const POWERS = ['freeze', 'double', 'bomb'];
 
 /** An error whose message is safe to show to the player. */
 class GameError extends Error {}
@@ -60,7 +61,7 @@ class Room {
     this.hostId = null;
     this.phase = 'lobby';
     this.round = 0;
-    this.settings = { gridSize: 4, turnSeconds, stars: false, isPublic: true };
+    this.settings = { gridSize: 4, turnSeconds, stars: false, powers: true, isPublic: true };
 
     this.board = null;
     this.roster = []; // players in the current round: [{ id, name, color, avatar, isBot }]
@@ -74,6 +75,14 @@ class Room {
     this.stats = {};
     this.winnerIds = [];
     this.awards = [];
+
+    // Power-ups (per round)
+    this.powers = {}; // playerId -> { freeze, double, bomb } (true = still available)
+    this.frozenId = null; // misses their next turn
+    this.doubleArmed = false; // current player's next non-scoring line keeps the turn
+    this.eventSeq = 0;
+    this.lastPower = null; // { seq, power, by, target?, line? }
+    this.lastSkip = null; // { seq, playerId } when a frozen player's turn is skipped
   }
 
   getMember(id) {
@@ -168,6 +177,7 @@ class Room {
       if (pos === -1) return;
       const wasTheirTurn = pos === this.turnIndex;
       this.turnOrder.splice(pos, 1);
+      if (this.frozenId === id) this.frozenId = null;
       if (this.turnOrder.length < 2 || !this.turnOrder.some((pid) => !this.getMember(pid)?.isBot)) {
         this.finish(); // nobody left to play against, or only bots remain
         return;
@@ -227,7 +237,7 @@ class Room {
       if (!TURN_OPTIONS.includes(patch.turnSeconds)) throw new GameError('That timer is not available.');
       next.turnSeconds = patch.turnSeconds;
     }
-    for (const key of ['stars', 'isPublic']) {
+    for (const key of ['stars', 'powers', 'isPublic']) {
       if (key in patch) next[key] = Boolean(patch[key]);
     }
     this.settings = next;
@@ -278,8 +288,13 @@ class Room {
       id, name, color, avatar, isBot, botLevel,
     }));
     this.stats = Object.fromEntries(
-      players.map((p) => [p.id, { moves: 0, stars: 0, bestCombo: 0, thinkMs: 0, timedMoves: 0 }])
+      players.map((p) => [p.id, { moves: 0, stars: 0, bestCombo: 0, thinkMs: 0, timedMoves: 0, powers: 0 }])
     );
+    this.powers = Object.fromEntries(players.map((p) => [p.id, { freeze: true, double: true, bomb: true }]));
+    this.frozenId = null;
+    this.doubleArmed = false;
+    this.lastPower = null;
+    this.lastSkip = null;
     this.turnOrder = players.map((p) => p.id);
     this.turnIndex = this.round % players.length; // a different player starts each round
     this.round++;
@@ -330,8 +345,55 @@ class Room {
 
     if (game.isFull(this.board)) this.finish();
     else if (claimed.length > 0) this.startTurnTimer(); // closed a box: go again
-    else this.advanceTurn(1);
+    else if (this.doubleArmed) {
+      this.doubleArmed = false; // Double power: this line doesn't end the turn
+      this.lastMove.doubled = true;
+      this.startTurnTimer();
+    } else this.advanceTurn(1);
     return claimed;
+  }
+
+  /** The next online player after `id` in turn order (never `id` itself). */
+  nextPlayerAfter(id) {
+    const n = this.turnOrder.length;
+    const start = this.turnOrder.indexOf(id);
+    for (let i = 1; i < n; i++) {
+      const candidate = this.turnOrder[(start + i) % n];
+      if (this.getMember(candidate)?.connected) return candidate;
+    }
+    return null;
+  }
+
+  /** Uses a one-time power-up for the current player. Doesn't end their turn. */
+  usePower(byId, power, line) {
+    if (this.phase !== 'playing') throw new GameError('The game is not running.');
+    if (!this.settings.powers) throw new GameError('Power-ups are turned off in this room.');
+    if (this.currentPlayerId() !== byId) throw new GameError('You can only use a power on your turn.');
+    if (!POWERS.includes(power)) throw new GameError('Unknown power-up.');
+    const mine = this.powers[byId];
+    if (!mine?.[power]) throw new GameError('You already used that power this game.');
+
+    let target = null;
+    let clean = null;
+    if (power === 'freeze') {
+      if (this.frozenId) throw new GameError('Someone is already frozen.');
+      target = this.nextPlayerAfter(byId);
+      if (!target) throw new GameError('There is nobody to freeze.');
+      this.frozenId = target;
+    } else if (power === 'double') {
+      if (this.doubleArmed) throw new GameError('Double is already active.');
+      this.doubleArmed = true;
+    } else {
+      if (!game.isBombable(this.board, line)) {
+        throw new GameError('Pick a drawn line that is not part of a claimed box.');
+      }
+      clean = { type: line.type, r: line.r, c: line.c };
+      game.eraseLine(this.board, clean);
+    }
+
+    mine[power] = false;
+    this.stats[byId].powers++;
+    this.lastPower = { seq: ++this.eventSeq, power, by: byId, target, line: clean };
   }
 
   /** Moves the turn `step` places on, then onward past anyone offline. */
@@ -341,13 +403,22 @@ class Room {
     let next = (this.turnIndex + step) % n;
     for (let i = 0; i < n; i++) {
       const idx = (this.turnIndex + step + i) % n;
-      if (this.getMember(this.turnOrder[idx])?.connected) {
-        next = idx;
-        break;
+      const id = this.turnOrder[idx];
+      if (!this.getMember(id)?.connected) continue;
+      if (step > 0 && id === this.frozenId && id !== previous) {
+        // Freeze power: this player misses one turn.
+        this.frozenId = null;
+        this.lastSkip = { seq: ++this.eventSeq, playerId: id };
+        continue;
       }
+      next = idx;
+      break;
     }
     this.turnIndex = next;
-    if (this.currentPlayerId() !== previous) this.combo = 0;
+    if (this.currentPlayerId() !== previous) {
+      this.combo = 0;
+      this.doubleArmed = false;
+    }
     this.startTurnTimer();
   }
 
@@ -386,6 +457,7 @@ class Room {
     this.turnDeadline = this.now() + ms;
     this.timer = this.safeTimeout(() => {
       if (this.phase !== 'playing' || this.currentPlayerId() !== player.id) return;
+      this.doubleArmed = false; // running out of time forfeits an armed Double
       this.advanceTurn(1);
       this.onChange({ type: 'timeout', playerId: player.id });
     }, ms);
@@ -407,6 +479,20 @@ class Room {
   playBot(id) {
     if (this.phase !== 'playing' || this.currentPlayerId() !== id) return;
     const bot = this.getMember(id);
+    if (this.settings.powers) {
+      const choice = ai.choosePower(
+        this.board,
+        bot.botLevel,
+        this.powers[id],
+        { canFreeze: !this.frozenId && Boolean(this.nextPlayerAfter(id)) },
+        this.rand
+      );
+      try {
+        if (choice) this.usePower(id, choice.power, choice.line);
+      } catch (err) {
+        console.error(`[room ${this.code}] bot power failed`, err); // still make the move
+      }
+    }
     this.move(id, ai.chooseMove(this.board, bot.botLevel, this.rand));
     this.onChange({ type: 'move', playerId: id });
   }
@@ -450,6 +536,10 @@ class Room {
     if (fast) {
       awards.push({ icon: 'zap', title: 'Lightning Hands', playerId: fast.playerId, detail: `${(-fast.value / 1000).toFixed(1)}s per move` });
     }
+    const powers = best((s) => s.powers, 1);
+    if (powers) {
+      awards.push({ icon: 'bomb', title: 'Mastermind', playerId: powers.playerId, detail: `${powers.value} power-ups used` });
+    }
     const stars = best((s) => s.stars, 0);
     if (stars) {
       awards.push({ icon: 'star', title: 'Star Hunter', playerId: stars.playerId, detail: `${stars.value} star ${stars.value === 1 ? 'box' : 'boxes'}` });
@@ -476,6 +566,7 @@ class Room {
       maxSeats: MAX_SEATS,
       gridSize: this.settings.gridSize,
       stars: this.settings.stars,
+      powers: this.settings.powers,
       turnSeconds: this.settings.turnSeconds,
     };
   }
@@ -505,7 +596,13 @@ class Room {
           score: scores[p.id] || 0,
           connected: Boolean(this.getMember(p.id)?.connected),
           left: !this.turnOrder.includes(p.id),
+          powers: this.settings.powers ? { ...this.powers[p.id] } : null,
         })),
+        powersEnabled: this.settings.powers,
+        frozenId: this.frozenId,
+        doubleArmed: this.doubleArmed,
+        lastPower: this.lastPower,
+        lastSkip: this.lastSkip,
         turnPlayerId: this.currentPlayerId(),
         turnIsBot: Boolean(current?.isBot),
         turnSeconds: this.settings.turnSeconds,
@@ -528,4 +625,5 @@ module.exports = {
   TURN_OPTIONS,
   COLORS,
   AVATARS,
+  POWERS,
 };

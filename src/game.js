@@ -55,13 +55,44 @@ function linesFor(board, type) {
   return null;
 }
 
-/** True if `line` is well-formed, on the board, and not drawn yet. */
-function isValidLine(board, line) {
+/** True if `line` is a well-formed { type, r, c } that lies on the board. */
+function isOnBoard(board, line) {
   if (!line || typeof line !== 'object') return false;
   const { type, r, c } = line;
   const lines = linesFor(board, type);
   if (!lines || !Number.isInteger(r) || !Number.isInteger(c)) return false;
-  return r >= 0 && r < lines.length && c >= 0 && c < lines[0].length && lines[r][c] === null;
+  return r >= 0 && r < lines.length && c >= 0 && c < lines[0].length;
+}
+
+/** True if `line` is on the board and not drawn yet. */
+function isValidLine(board, line) {
+  return isOnBoard(board, line) && linesFor(board, line.type)[line.r][line.c] === null;
+}
+
+/** Bomb power: a drawn line can be erased only if it isn't a side of any claimed box. */
+function isBombable(board, line) {
+  return (
+    isOnBoard(board, line) &&
+    linesFor(board, line.type)[line.r][line.c] !== null &&
+    adjacentBoxes(board, line).every(([r, c]) => board.boxes[r][c] === null)
+  );
+}
+
+function eraseLine(board, line) {
+  linesFor(board, line.type)[line.r][line.c] = null;
+}
+
+/** Every line the Bomb power could erase right now. */
+function bombableLines(board) {
+  const out = [];
+  for (const type of ['h', 'v']) {
+    linesFor(board, type).forEach((row, r) =>
+      row.forEach((owner, c) => {
+        if (owner !== null && isBombable(board, { type, r, c })) out.push({ type, r, c });
+      })
+    );
+  }
+  return out;
 }
 
 /** Number of drawn sides (0-4) around box (r, c). */
@@ -141,6 +172,9 @@ module.exports = {
   randomStars,
   cloneBoard,
   isValidLine,
+  isBombable,
+  eraseLine,
+  bombableLines,
   sidesDrawn,
   adjacentBoxes,
   boxValue,

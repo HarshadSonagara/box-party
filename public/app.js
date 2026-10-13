@@ -28,6 +28,9 @@
   let seenMoveKey = null;
   let prevTurnPlayerId = null;
   let prevPhase = null;
+  let seenPowerSeq = null;
+  let seenSkipSeq = null;
+  let bombMode = false; // choosing a line to erase with the Bomb power
   let avatar = AVATARS.includes(localStorage.getItem(AVATAR_KEY))
     ? localStorage.getItem(AVATAR_KEY)
     : AVATARS[Math.floor(Math.random() * AVATARS.length)];
@@ -170,6 +173,9 @@
       react: () => tone(880, 0, 0.06, 0.04, 'triangle'),
       win: () => [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, i * 0.11, 0.32, 0.08)),
       end: () => { tone(392, 0, 0.2); tone(330, 0.15, 0.3); },
+      bomb: () => { tone(140, 0, 0.45, 0.14, 'sawtooth'); tone(70, 0.05, 0.6, 0.12, 'square'); },
+      freeze: () => [1568, 2093, 2637, 3136].forEach((f, i) => tone(f, i * 0.05, 0.25, 0.035)),
+      double: () => { tone(700, 0, 0.1, 0.06, 'triangle'); tone(1050, 0.12, 0.16, 0.06, 'triangle'); },
     };
 
     return {
@@ -265,11 +271,29 @@
     return type === 'h' ? [x, y, x + SPACING, y] : [x, y, x, y + SPACING];
   }
 
+  /** The (up to two) boxes on either side of a line. */
+  function boxesBeside(size, { type, r, c }) {
+    const out = [];
+    if (type === 'h') {
+      if (r > 0) out.push([r - 1, c]);
+      if (r < size) out.push([r, c]);
+    } else {
+      if (c > 0) out.push([r, c - 1]);
+      if (c < size) out.push([r, c]);
+    }
+    return out;
+  }
+
+  /** Mirrors the server rule: a drawn line that isn't a side of any claimed box. */
+  function isBombable(view, line) {
+    return view[line.type][line.r][line.c] !== null && boxesBeside(view.size, line).every(([r, c]) => view.boxes[r][c] === null);
+  }
+
   /**
    * Draws a board into `target`.
    * view: { size, h, v, boxes, stars, players: [{ id, color, avatar, name }], lastMove }
    */
-  function renderBoard(target, view, { animate = false, previewColor } = {}) {
+  function renderBoard(target, view, { animate = false, previewColor, bombTargets = false } = {}) {
     const extent = view.size * SPACING + PAD * 2;
     const find = (id) => view.players.find((p) => p.id === id);
     const color = (id) => find(id)?.color || GREY;
@@ -311,8 +335,9 @@
         row.forEach((owner, c) => {
           const [x1, y1, x2, y2] = lineEnds({ type, r, c });
           const isLast = animate && last && last.type === type && last.r === r && last.c === c;
+          const bombable = bombTargets && owner !== null && isBombable(view, { type, r, c });
           svg('line', {
-            class: `edge ${owner === null ? 'free' : 'taken'}${isLast ? ' last' : ''}`,
+            class: `edge ${owner === null ? 'free' : 'taken'}${isLast ? ' last' : ''}${bombable ? ' bombable' : ''}`,
             x1, y1, x2, y2,
             ...(owner !== null && { stroke: color(owner), color: color(owner) }),
           }, target);
@@ -448,6 +473,7 @@
             el('span', { className: 'tag', textContent: `${room.gridSize}×${room.gridSize}` }),
             el('span', { className: 'tag', textContent: `${room.turnSeconds}s turns` }),
             room.stars ? el('span', { className: 'tag', textContent: 'Star boxes' }) : null,
+            room.powers ? el('span', { className: 'tag', textContent: 'Power-ups' }) : null,
           ]),
           el('div', { className: 'seats', title: `${room.players}/${room.maxSeats} players` }, seats),
           btn,
@@ -476,6 +502,12 @@
   // ------------------------------------------------------------------ joining
 
   function enteredRoom(res) {
+    if (!state) {
+      // Fresh page or new room: don't replay effects that happened before we arrived.
+      seenMoveKey = moveKey(res.state);
+      seenPowerSeq = res.state.game?.lastPower?.seq ?? null;
+      seenSkipSeq = res.state.game?.lastSkip?.seq ?? null;
+    }
     saveSession({ code: res.code, token: res.token, playerId: res.playerId });
     setUrlRoom(res.code);
     onState(res.state);
@@ -488,6 +520,9 @@
     seenMoveKey = null;
     prevTurnPlayerId = null;
     prevPhase = null;
+    seenPowerSeq = null;
+    seenSkipSeq = null;
+    bombMode = false;
     confetti.clear();
     setUrlRoom(null);
     showView('home');
@@ -608,6 +643,57 @@
     }
     prevTurnPlayerId = turnId;
     prevPhase = state.phase;
+    playPowerCues();
+  }
+
+  /** Effects for power-ups everyone sees: explosion, frost, pop-up messages. */
+  function playPowerCues() {
+    const g = state.game;
+    const nameOf = (id) => (id === session.playerId ? 'You' : playerById(id)?.name ?? 'Someone');
+    const power = g?.lastPower;
+    if (power && power.seq !== seenPowerSeq) {
+      seenPowerSeq = power.seq;
+      const who = nameOf(power.by);
+      if (power.power === 'bomb') {
+        showPop('Boom!', '#ff7a59');
+        blastAt(power.line);
+        flashBoard('shake', 450);
+        sound.play('bomb');
+        if (power.by !== session.playerId) toast(`${who} bombed a line`);
+      } else if (power.power === 'freeze') {
+        showPop(`${who} froze ${power.target === session.playerId ? 'you' : nameOf(power.target)}`, '#7fd3ff');
+        flashBoard('frost', 1200);
+        sound.play('freeze');
+      } else {
+        showPop(`${who === 'You' ? 'Double' : `${who}: Double`} line`, 'var(--gold)');
+        sound.play('double');
+      }
+    }
+    const skip = g?.lastSkip;
+    if (skip && skip.seq !== seenSkipSeq) {
+      seenSkipSeq = skip.seq;
+      toast(skip.playerId === session.playerId ? 'You were frozen — turn skipped' : `${nameOf(skip.playerId)} was frozen — turn skipped`);
+    }
+  }
+
+  function flashBoard(className, ms) {
+    const wrap = $('board').parentElement;
+    wrap.classList.remove(className);
+    void wrap.offsetWidth; // restart the animation
+    wrap.classList.add(className);
+    setTimeout(() => wrap.classList.remove(className), ms);
+  }
+
+  function blastAt(line) {
+    if (!line || reducedMotion) return;
+    const [x1, y1, x2, y2] = lineEnds(line);
+    const cx = (x1 + x2) / 2;
+    const cy = (y1 + y2) / 2;
+    const board = $('board');
+    const group = svg('g', {}, board);
+    svg('circle', { class: 'blast-core', cx, cy, r: 26 }, group);
+    svg('circle', { class: 'blast', cx, cy, r: 30 }, group);
+    setTimeout(() => group.remove(), 800);
   }
 
   function showComboPop({ combo, claimed, by }) {
@@ -615,8 +701,11 @@
     let text = null;
     if (combo >= 2) text = `Combo ×${combo}`;
     else if (stars) text = '+2 ★';
-    if (!text) return;
-    const pop = el('span', { textContent: text, '--c': colorOf(by) });
+    if (text) showPop(text, colorOf(by));
+  }
+
+  function showPop(text, color) {
+    const pop = el('span', { textContent: text, '--c': color });
     $('comboPop').replaceChildren(pop);
     setTimeout(() => pop.remove(), 1200);
   }
@@ -693,6 +782,8 @@
     );
     $('starsToggle').checked = s.stars;
     $('starsToggle').disabled = !host;
+    $('powersToggle').checked = s.powers;
+    $('powersToggle').disabled = !host;
     $('publicToggle').checked = s.isPublic;
     $('publicToggle').disabled = !host;
     $('hostOnly').textContent = host ? 'you are the host' : 'only the host can change these';
@@ -714,6 +805,7 @@
     const over = state.phase === 'over';
     const myTurn = !over && g.turnPlayerId === session.playerId;
     const current = g.players.find((p) => p.id === g.turnPlayerId);
+    if (!myTurn) bombMode = false;
 
     // Turn banner
     $('turnBanner').hidden = over;
@@ -722,7 +814,9 @@
     $('turnAvatar').replaceChildren(icon(current ? current.avatar : 'clock'));
     $('turnText').replaceChildren(
       ...(myTurn
-        ? [el('span', { className: 'big', textContent: 'Your turn' }), 'draw a line']
+        ? bombMode
+          ? [el('span', { className: 'big', textContent: 'Bomb armed' }), 'tap a glowing line to erase it · tap Bomb to cancel']
+          : [el('span', { className: 'big', textContent: 'Your turn' }), g.doubleArmed ? 'double line active — this line keeps your turn' : 'draw a line']
         : current && g.turnIsBot
           ? [el('span', { className: 'who', textContent: current.name }), el('span', { className: 'thinking' }, [' is thinking', el('i'), el('i'), el('i')])]
           : current
@@ -734,13 +828,48 @@
     $('resultCard').hidden = !over;
     if (over) renderResult();
 
-    renderBoard($('board'), g, { animate: isMoveNew, previewColor: colorOf(session.playerId) });
+    renderPowerBar(myTurn, over);
+    renderBoard($('board'), g, { animate: isMoveNew, previewColor: colorOf(session.playerId), bombTargets: bombMode });
+    $('board').classList.toggle('bomb-mode', bombMode);
     renderScoreboard(over);
 
     const watching = state.members.filter((m) => !g.players.some((p) => p.id === m.id));
     $('watchers').textContent = watching.length
       ? `Watching: ${watching.map((m) => (m.id === session.playerId ? 'you' : m.name)).join(', ')} — joining next round`
       : '';
+  }
+
+  function renderPowerBar(myTurn, over) {
+    const g = state.game;
+    const me = g.players.find((p) => p.id === session.playerId);
+    $('powerBar').hidden = over || !g.powersEnabled || !me || me.left;
+    if ($('powerBar').hidden) return;
+    for (const btn of $('powerBar').querySelectorAll('[data-power]')) {
+      const power = btn.dataset.power;
+      const available = Boolean(me.powers?.[power]);
+      const armed = (power === 'bomb' && bombMode) || (power === 'double' && myTurn && g.doubleArmed);
+      btn.classList.toggle('used', !available && !armed);
+      btn.classList.toggle('armed', armed);
+      btn.dataset.armed = power === 'bomb' ? 'Aiming' : 'Active';
+      btn.setAttribute('aria-pressed', String(armed));
+      btn.disabled = !myTurn || (!available && !armed) || (power === 'freeze' && Boolean(g.frozenId));
+      if (power === 'bomb' && available && !bombMode && !hasBombTarget(g)) btn.disabled = true;
+    }
+  }
+
+  function hasBombTarget(g) {
+    return ['h', 'v'].some((type) => g[type].some((row, r) => row.some((_, c) => isBombable(g, { type, r, c }))));
+  }
+
+  async function onPowerClick(power) {
+    if (!canMove()) return;
+    if (power === 'bomb') {
+      bombMode = !bombMode; // pick the line on the board next
+      renderGame(false);
+      return;
+    }
+    const res = await request('game:power', { power });
+    if (!res.ok) toast(res.error, true);
   }
 
   function renderResult() {
@@ -781,7 +910,7 @@
       ...players.map((p, i) => {
         const status = p.left ? 'left' : !p.connected ? 'offline' : '';
         return el('li', {
-          className: [p.id === g.turnPlayerId && !over ? 'turn' : '', status ? 'gone' : ''].join(' '),
+          className: [p.id === g.turnPlayerId && !over ? 'turn' : '', status ? 'gone' : '', g.frozenId === p.id && !over ? 'frozen' : ''].join(' '),
           '--c': p.color,
         }, [
           over ? el('span', { className: `rank${i === 0 ? ' first' : ''}`, textContent: String(i + 1) }) : null,
@@ -789,6 +918,15 @@
           el('span', { className: 'player-name', textContent: p.id === session.playerId ? `${p.name} (you)` : p.name }),
           p.isBot ? el('span', { className: 'tag bot', textContent: LEVEL_LABEL[p.botLevel] }) : null,
           status ? el('span', { className: 'tag', textContent: status }) : null,
+          g.frozenId === p.id && !over ? el('span', { className: 'tag frozen-tag' }, [icon('snowflake'), 'Frozen']) : null,
+          p.powers && !over
+            ? el('span', { className: 'pips', title: 'Power-ups left' },
+                ['freeze', 'double', 'bomb'].map((k) => {
+                  const pip = icon(k === 'freeze' ? 'snowflake' : k);
+                  if (!p.powers[k]) pip.classList.add('spent');
+                  return pip;
+                }))
+            : null,
           el('span', { className: 'score', textContent: p.score }),
         ]);
       })
@@ -798,7 +936,7 @@
   // ------------------------------------------------------------------ board input
 
   /** The free line closest to a pointer event, if it's close enough to be what the player meant. */
-  function lineAtPointer(event) {
+  function lineAtPointer(event, mode = 'free') {
     const g = state?.game;
     if (!g) return null;
     const ctm = $('board').getScreenCTM();
@@ -810,7 +948,7 @@
     for (const type of ['h', 'v']) {
       g[type].forEach((row, r) =>
         row.forEach((owner, c) => {
-          if (owner !== null) return;
+          if (mode === 'free' ? owner !== null : !isBombable(g, { type, r, c })) return;
           const [x1, y1, x2, y2] = lineEnds({ type, r, c });
           // distance from point to an axis-aligned segment
           const dx = Math.max(Math.min(x1, x2) - pt.x, 0, pt.x - Math.max(x1, x2));
@@ -831,8 +969,9 @@
   function updatePreview(event) {
     const preview = $('board-preview');
     if (!preview) return;
-    const line = event && event.pointerType === 'mouse' && canMove() ? lineAtPointer(event) : null;
-    $('board').style.cursor = line ? 'pointer' : '';
+    const line = event && event.pointerType === 'mouse' && canMove() ? lineAtPointer(event, bombMode ? 'bomb' : 'free') : null;
+    $('board').style.cursor = line && !bombMode ? 'pointer' : '';
+    preview.setAttribute('class', bombMode ? 'bomb-target' : 'preview');
     if (!line) return preview.setAttribute('visibility', 'hidden');
     const [x1, y1, x2, y2] = lineEnds(line);
     for (const [k, v] of Object.entries({ x1, y1, x2, y2 })) preview.setAttribute(k, v);
@@ -842,12 +981,20 @@
   let moving = false;
   async function onBoardClick(event) {
     if (!canMove() || moving) return;
-    const line = lineAtPointer(event);
+    const bombing = bombMode;
+    const line = lineAtPointer(event, bombing ? 'bomb' : 'free');
     if (!line) return;
+    // Leave aiming mode before the server's new state arrives (it usually beats the ack).
+    bombMode = false;
     moving = true;
-    const res = await request('game:move', line);
+    const res = bombing
+      ? await request('game:power', { power: 'bomb', line })
+      : await request('game:move', line);
     moving = false;
-    if (!res.ok) toast(res.error, true);
+    if (!res.ok) {
+      toast(res.error, true);
+      if (state?.game) renderGame(false);
+    }
   }
 
   // Countdown, driven locally from the server's remaining-time value.
@@ -959,6 +1106,17 @@
       if (btn) hostAction('room:addBot', { level: btn.dataset.bot });
     });
     $('starsToggle').addEventListener('change', (e) => hostAction('room:settings', { stars: e.target.checked }));
+    $('powersToggle').addEventListener('change', (e) => hostAction('room:settings', { powers: e.target.checked }));
+    $('powerBar').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-power]');
+      if (btn && !btn.disabled) onPowerClick(btn.dataset.power);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && bombMode) {
+        bombMode = false;
+        if (state?.game) renderGame(false);
+      }
+    });
     $('publicToggle').addEventListener('change', (e) => hostAction('room:settings', { isPublic: e.target.checked }));
     $('startBtn').addEventListener('click', () => hostAction('game:start'));
     $('againBtn').addEventListener('click', () => hostAction('game:start'));

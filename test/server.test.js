@@ -22,9 +22,10 @@ function nextEvent(socket, event, predicate = () => true) {
 
 /** Keeps the latest 'state' a socket received, and waits for one that matches. */
 function track(socket, initial = null) {
-  const tracker = { state: initial, waiters: [] };
+  const tracker = { state: initial, waiters: [], count: 0 }; // count = states received
   socket.on('state', (state) => {
     tracker.state = state;
+    tracker.count++;
     tracker.waiters = tracker.waiters.filter((waiter) => !waiter(state));
   });
   tracker.until = (predicate) =>
@@ -138,8 +139,9 @@ test('quick play starts a private game against a bot that moves by itself', asyn
     state = await view.until((s) => s.phase === 'over' || s.game.turnPlayerId === res.playerId);
     if (state.phase === 'over') break;
     const line = firstFreeLine(state.game);
+    const seen = view.count;
     assert.equal((await call(solo, 'game:move', line)).ok, true);
-    state = await view.until(drawn(line));
+    state = await view.until(() => view.count > seen); // a bot may bomb our line right away
   }
   assert.equal(state.phase, 'over');
 });

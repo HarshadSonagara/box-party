@@ -51,8 +51,8 @@ test('only the host can start or change settings, and only with 2+ players', () 
   assert.throws(() => room.updateSettings(ben.id, { gridSize: 5 }), /Only the host/);
   assert.throws(() => room.updateSettings(players[0].id, { gridSize: 9 }), /board size/);
   assert.throws(() => room.updateSettings(players[0].id, { turnSeconds: 7 }), /timer/);
-  room.updateSettings(players[0].id, { gridSize: 5, turnSeconds: 10, stars: 1, isPublic: 0 });
-  assert.deepEqual(room.settings, { gridSize: 5, turnSeconds: 10, stars: true, isPublic: false });
+  room.updateSettings(players[0].id, { gridSize: 5, turnSeconds: 10, stars: 1, powers: 0, isPublic: 0 });
+  assert.deepEqual(room.settings, { gridSize: 5, turnSeconds: 10, stars: true, powers: false, isPublic: false });
   room.start(players[0].id);
   assert.equal(room.phase, 'playing');
   assert.throws(() => room.updateSettings(players[0].id, { gridSize: 3 }), /lobby/);

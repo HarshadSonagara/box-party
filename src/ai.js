@@ -74,4 +74,45 @@ function chooseMove(board, level = 'medium', rand = Math.random) {
   return pick(options);
 }
 
-module.exports = { chooseMove, captureValue, isRisky, giveaway, LEVELS };
+/**
+ * Decides whether a bot should use a power-up before its move. Returns
+ * { power, line? } or null. `available` is { freeze, double, bomb } (true = unused).
+ *   easy          – now and then fires a random power, just for chaos
+ *   medium / hard – save powers until every line would gift a box, then use one
+ *                   to turn the sacrifice around (Double / Freeze let the bot
+ *                   collect its own gift; Bomb erases a line to create a safe move)
+ */
+function choosePower(board, level, available, { canFreeze = true } = {}, rand = Math.random) {
+  if (!available) return null;
+  const free = game.freeLines(board);
+  if (free.length === 0) return null;
+  const pick = (list) => list[Math.floor(rand() * list.length)];
+  const has = (power) => available[power] && (power !== 'freeze' || canFreeze);
+
+  if (level === 'easy') {
+    if (rand() >= 0.08) return null;
+    const options = ['freeze', 'double'].filter(has);
+    const bombs = has('bomb') ? game.bombableLines(board) : [];
+    if (bombs.length) options.push('bomb');
+    if (options.length === 0) return null;
+    const power = pick(options);
+    return power === 'bomb' ? { power, line: pick(bombs) } : { power };
+  }
+
+  if (free.some((l) => captureValue(board, l) > 0)) return null; // take the boxes first
+  if (free.some((l) => !isRisky(board, l))) return null; // no pressure: save powers
+
+  if (has('double')) return { power: 'double' };
+  if (has('freeze')) return { power: 'freeze' };
+  if (has('bomb')) {
+    const rescues = game.bombableLines(board).filter((line) => {
+      const b = game.cloneBoard(board);
+      game.eraseLine(b, line);
+      return game.freeLines(b).some((l) => !isRisky(b, l));
+    });
+    if (rescues.length) return { power: 'bomb', line: pick(rescues) };
+  }
+  return null;
+}
+
+module.exports = { chooseMove, choosePower, captureValue, isRisky, giveaway, LEVELS };

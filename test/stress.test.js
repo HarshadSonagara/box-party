@@ -13,9 +13,10 @@ function call(socket, event, payload) {
 
 /** Keeps the latest 'state' a socket received, and waits for one that matches. */
 function track(socket, initial = null) {
-  const tracker = { state: initial, waiters: [] };
+  const tracker = { state: initial, waiters: [], count: 0 }; // count = states received
   socket.on('state', (state) => {
     tracker.state = state;
+    tracker.count++;
     tracker.waiters = tracker.waiters.filter((waiter) => !waiter(state));
   });
   tracker.until = (predicate, ms = 8000) =>
@@ -31,7 +32,6 @@ const firstFreeLine = (g) =>
   ['h', 'v']
     .flatMap((type) => g[type].flatMap((row, r) => row.map((o, c) => (o === null ? { type, r, c } : null))))
     .find(Boolean);
-const drawn = (line) => (s) => s.game?.[line.type][line.r][line.c] != null;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function startServer(t, opts = {}) {
@@ -57,9 +57,11 @@ async function playToEnd(socket, view, playerId) {
     const state = await view.until((s) => s.phase === 'over' || s.game?.turnPlayerId === playerId, 20000);
     if (state.phase === 'over') return state;
     const line = firstFreeLine(state.game);
+    const seen = view.count;
     const res = await call(socket, 'game:move', line);
     assert.equal(res.ok, true, res.error);
-    await view.until(drawn(line));
+    // Wait for any newer state: a bot may legally bomb our line right away.
+    await view.until(() => view.count > seen);
   }
 }
 

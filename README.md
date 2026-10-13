@@ -10,7 +10,11 @@
 3. If you don't close a box, the turn passes to the next player.
 4. When every box is taken, the player with **the most points wins**. Ties share the win.
 5. **⭐ Star boxes** (optional mode) are worth 2 points.
-6. Every turn has a timer (10s Blitz up to 60s). If time runs out, your turn is skipped.
+6. **Power-ups** (on by default): everyone gets three, each usable once per game on your own turn:
+   - **Freeze**: the next player misses their next turn.
+   - **Double**: your next line doesn't end your turn, so you can set a trap and take the box yourself.
+   - **Bomb**: erase any line that isn't part of a claimed box.
+7. Every turn has a timer (10s Blitz up to 60s). If time runs out, your turn is skipped (and an armed Double is lost).
 
 > 💡 Tip: never draw the 3rd side of a box, or the next player will steal it.
 
@@ -20,14 +24,15 @@ The rules are on the home page (with a live, self-playing demo board) and behind
 
 | | |
 |---|---|
+| 💣 **Power-up cards** | Freeze a rival, draw a Double line, or Bomb a line off the board. Each has its own effect (frost flash, explosion with screen shake), and power-ups left are shown on the scoreboard. Bots use them too, saving them for the moment they'd otherwise have to give boxes away. |
 | ⚡ **Play vs AI in one tap** | Three bot levels. Easy is random-ish. Medium always takes free boxes and avoids 3rd sides. Hard also gives away the fewest points when it's forced to sacrifice. Bots can fill empty seats in any room. |
 | 📱 **Scan-to-join QR codes** | Every lobby shows a QR code. Point a phone at the screen and you're in. |
 | 🌍 **Live "Open rooms" directory** | Public rooms are listed on the home page and refresh automatically. Join a waiting room or 👀 watch a live game. |
 | 📊 **Live stats** | See players online, live games, and games finished. |
 | 😂 **Real-time emoji reactions** | Reactions float across every player's screen. |
-| 🔥 **Combos and awards** | COMBO ×N pop-ups when you chain boxes. End-of-round titles: 🔥 Combo King, ⚡ Lightning Hands, ⭐ Star Hunter. Confetti for the winner. |
+| 🔥 **Combos and awards** | COMBO ×N pop-ups when you chain boxes. End-of-round titles: 🔥 Combo King, ⚡ Lightning Hands, ⭐ Star Hunter, 💣 Mastermind. Confetti for the winner. |
 | 🎭 **Avatars** | 16 line-art avatars (crown, gem, moon…). Your avatar stamps every box you win, in your colour. |
-| ⚙️ **Host settings** | Board size from 3×3 to 7×7, turn timer, star boxes, and public or private room. |
+| ⚙️ **Host settings** | Board size from 3×3 to 7×7, turn timer, star boxes, power-ups on or off, and public or private room. |
 | 🔄 **Never lose your seat** | A refresh, an app switch, or a Wi-Fi drop puts you right back into your game. Your turn timer keeps running, offline players are skipped, and the host role passes on automatically. |
 | 👀 **Spectators** | Late joiners watch the current round and get a seat in the rematch. |
 | 🏆 **Rematch** | Win tally across rounds, and the starting player rotates each round. |
@@ -47,7 +52,7 @@ npm start
 
 Open http://localhost:3000. The console also prints a `http://192.168.x.x:3000` address that phones on the same Wi-Fi can use.
 
-There are 38 automated tests. They cover the rules, the AI, room logic, full two-device and vs-bot games over real WebSockets, and production stress checks: junk and malicious input, spam, 20 games at once, host disconnects, full rooms, and cleanup.
+There are 49 automated tests. They cover the rules, the AI, power-ups, room logic, full two-device and vs-bot games over real WebSockets, and production stress checks: junk and malicious input, spam, 20 games at once, host disconnects, full rooms, and cleanup.
 
 ```bash
 npm test
@@ -80,8 +85,8 @@ Railway and Fly.io also work. They just need to run `npm start` with a `PORT` en
 ```
 server.js          Express + Socket.IO: rooms, events, /api/lobby, /qr/:code.svg, cleanup
 src/game.js        Pure Dots & Boxes rules (board, moves, star boxes, scoring)
-src/ai.js          Bot move selection (easy / medium / hard)
-src/room.js        Room state machine: players, bots, host, settings, turns, timer, awards
+src/ai.js          Bot move and power-up selection (easy / medium / hard)
+src/room.js        Room state machine: players, bots, host, settings, turns, timer, power-ups, awards
 public/            Client (vanilla HTML/CSS/JS, no build step)
 test/              node:test suites
 ```
@@ -93,11 +98,12 @@ test/              node:test suites
 | `room:create` | `{ name, avatar }` | Ack: `{ code, playerId, token, state }` |
 | `room:quickplay` | `{ name, avatar, level }` | Private room vs a bot, already started |
 | `room:join` | `{ code, name, avatar, token? }` | `token` = rejoin as the same player |
-| `room:settings` | `{ gridSize?, turnSeconds?, stars?, isPublic? }` | Host only, lobby only |
+| `room:settings` | `{ gridSize?, turnSeconds?, stars?, powers?, isPublic? }` | Host only, lobby only |
 | `room:addBot` / `room:removeBot` | `{ level }` / `{ botId }` | Host only, lobby only |
 | `room:react` | `{ emoji }` | Rate-limited |
 | `game:start` | – | Host only, from lobby or results |
 | `game:move` | `{ type: 'h'\|'v', r, c }` | Must be your turn |
+| `game:power` | `{ power: 'freeze'\|'double'\|'bomb', line? }` | Your turn, once each per game. `line` is only for Bomb |
 | `game:lobby` | – | Host only, after a game |
 | `room:leave` | – | |
 

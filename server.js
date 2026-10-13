@@ -293,6 +293,9 @@ function createGameServer({
     on('game:move', ({ type, r, c }) =>
       act((room, id) => ({ claimed: room.move(id, { type, r, c }).length }))
     );
+    on('game:power', ({ power, line }) =>
+      act((room, id) => room.usePower(id, power, line && { type: line.type, r: line.r, c: line.c }))
+    );
 
     on('room:react', ({ emoji }) => {
       const room = currentRoom();
