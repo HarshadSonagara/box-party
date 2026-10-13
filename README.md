@@ -1,5 +1,7 @@
 # 🟥 Box Party — real-time multiplayer Dots & Boxes
 
+### ▶ Play now: **https://box-party-euoj.onrender.com**
+
 **Connect the dots. Steal the boxes.** The classic pen-and-paper duel, rebuilt for the group chat.
 2–6 players, each on their own phone or laptop. Share a 4-letter code, a link or a QR code. Nobody has to log in or install anything.
 
